@@ -1,0 +1,204 @@
+---
+title: "Unité d'Echantillonage: **`r params$UE`** " # a report title 
+params:  # this is the parameter declaration
+  UE: "122" # default value, overrriden by the render function, but helpful for debugging
+output:
+  pdf_document
+
+---
+```{r setup, include=FALSE,R.options=knitr::opts_chunk$set(warning=FALSE, message=FALSE)}
+library(tint)
+library(maptools)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+library(scales)
+library(sp)
+library(xlsx)
+library(ggrepel)
+library(rgdal)
+library(rgeos)
+library(gpclib)
+#library(tables)
+#library(xtable)
+#library(lmfor)
+library(dplyr)
+library(reshape2)
+library(nlstools)
+library(maptools)
+library(raster)
+
+input="/home/antonello/R_projects/NFI_RDC/Data/collect-csv-data-export-drc_nfi-ENTRY-2020-05-05T17_27_48/"
+#getwd()
+trees<-read.csv("../trees.csv",header = T)
+#trees=read.csv(paste("trees",".csv",sep=""))
+trees$DBH<-trees$dhp
+UEtrees<-trees[which(trees$UE==params$UE),]
+# Cleantrees<-UEtrees[which(!is.na(UEtrees$DBH)),]
+# Cleantrees<-Cleantrees[which(!is.na(Cleantrees$X)),]
+# Cleantrees<-Cleantrees[which(!is.na(Cleantrees$Y)),]
+# Cleantrees<-Cleantrees[which(!is.na(Cleantrees$n_sos)),]
+ue=read.csv(paste(input,"ue",".csv",sep=""))
+sos=read.csv(paste(input,"sos",".csv",sep=""))
+parc=read.csv(paste(input,"parcelle",".csv",sep=""))
+UEparc<-parc[which(parc$ue_id_ue==as.numeric(params$UE)),]
+sos_codes=read.csv(paste(input,"cos_service2",".csv",sep=""))
+RDC <- readRDS("../Data/Comp_Data/gadm36_COD_1_sp.rds") #RDC carte (Level 1) GADM version 2.8
+#UEparc<-parc[which(parc$ue_id_ue==as.numeric(params$UE)),]
+keyCP=names(UEparc)[c(1:6,9:11)]
+na_parc=parc[rowSums(data.frame(sapply(UEparc[,keyCP],is.na)))!=0,]
+```
+```{r graphic_UE_position,echo=FALSE,out.width='.49\\linewidth',fig.show='hold',fig.margin = TRUE,  fig.pos="h",fig.height=3,fig.width=3.5,fig.cap="Position de l'unité d'echantillonage en RDC"}
+
+country_map1 <- ggplot2::fortify(RDC, region="NAME_1")
+
+
+ggplot(UEparc, aes(x=descr_dep_parc_coord_so_parc_theorique_x, y=descr_dep_parc_coord_so_parc_theorique_y))+
+  geom_polygon(data=country_map1, aes(long,lat,group=group), fill="whitesmoke")+
+  geom_path(data=country_map1, aes(long,lat, group=group), color="grey",
+            size=0.1)+
+  geom_point()+
+  #geom_text(aes(label=ue_id_ue), hjust=-0.2, size=3)+
+  theme_bw()+
+  theme(aspect.ratio=1,
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(), axis.line = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_blank(),legend.position="bottom")
+
+```
+```{r T_position, echo=FALSE,out.width='.49\\linewidth',fig.show='hold',fig.margin = TRUE,  fig.pos="h",fig.height=3,fig.width=3.5,fig.cap="Position des arbres dans l'UE"}
+
+ggplot(data = UEtrees, mapping = aes(x = X, y = Y)) +
+  #geom_point(data=(data.frame(X=c(seq(0,75,by=25)), Y=c(seq(0,75,by=25)))), alpha=0, aes(X,Y)) +
+  geom_vline(xintercept =seq(0,75,by=25))+
+  geom_hline(yintercept=seq(0,75,by=25))+
+  annotate("text", x=12.5, y=12.5, label= "1", size=10, alpha=0.3)+
+  annotate("text", x=12.5, y=37.5, label= "2", size=10, alpha=0.3)+
+  annotate("text", x=12.5, y=62.5, label= "3", size=10, alpha=0.3)+
+  annotate("text", x=37.5, y=62.5, label= "4", size=10, alpha=0.3)+
+  annotate("text", x=37.5, y=37.5, label= "5", size=10, alpha=0.3)+
+  annotate("text", x=37.5, y=12.5, label= "6", size=10, alpha=0.3)+
+  annotate("text", x=62.5, y=12.5, label= "7", size=10, alpha=0.3)+
+  annotate("text", x=62.5, y=37.5, label= "8", size=10, alpha=0.3)+
+  annotate("text", x=62.5, y=62.5, label= "9", size=10, alpha=0.3)+
+  geom_point(aes(col = factor(n_sos), size=DBH, alpha=0.5))+
+  guides(alpha=FALSE)+
+  scale_colour_brewer(name="sos", palette = "Set1")+
+  scale_x_continuous(breaks=seq(0,75,by=12.5))+
+  scale_y_continuous(breaks=seq(0,75,by=25))+
+  scale_size(range = c(0, 3))
+```
+```{r sos_position,echo=FALSE,out.width='.49\\linewidth',fig.show='hold',fig.margin = TRUE,  fig.pos="h",fig.height=3,fig.width=3.5,fig.cap="Surface des SOS dans l'UE"}
+
+df<-data.frame(UEtrees$UE,UEtrees$X,UEtrees$Y,UEtrees$n_sos)
+df<-na.omit(df)
+names(df)<-c("UE","X","Y","sos")
+find_hull <- function(df) df[chull(df[,2], df[,3]), ]
+hulls <- ddply(df, "sos", find_hull)
+
+# make a color vector from group column
+# g.col <- group_col[hulls$sos]
+
+ggplot(data = df, aes(X,Y)) +  
+  geom_vline(xintercept =seq(0,75,by=25))+
+  geom_hline(yintercept=seq(0,75,by=25))+
+  annotate("text", x=12.5, y=12.5, label= "1", size=10, alpha=0.3)+
+  annotate("text", x=12.5, y=37.5, label= "2", size=10, alpha=0.3)+
+  annotate("text", x=12.5, y=62.5, label= "3", size=10, alpha=0.3)+
+  annotate("text", x=37.5, y=62.5, label= "4", size=10, alpha=0.3)+
+  annotate("text", x=37.5, y=37.5, label= "5", size=10, alpha=0.3)+
+  annotate("text", x=37.5, y=12.5, label= "6", size=10, alpha=0.3)+
+  annotate("text", x=62.5, y=12.5, label= "7", size=10, alpha=0.3)+
+  annotate("text", x=62.5, y=37.5, label= "8", size=10, alpha=0.3)+
+  annotate("text", x=62.5, y=62.5, label= "9", size=10, alpha=0.3)+
+  geom_point(data = df, aes(X, Y, colour=factor(sos)), size=1, alpha=0.5) +
+  geom_polygon(data = hulls, alpha = 0.5, aes(fill=factor(sos))) +  # fill
+  geom_polygon(data = hulls, alpha = 0, aes(group=factor(sos))) + # draw lines with specific color
+  guides(alpha=FALSE)+
+  scale_colour_brewer(name="sos", palette = "Set1")  # change fill color.
+
+```
+
+
+
+**Description des données de l'UE**
+
+N. d'arbres: **`r nrow(UEtrees)`**
+
+N. des expeces:  **`r length(unique(UEtrees$nom_scientifique_scientific_name))`**
+
+Hauteurs mesurées: **`r length(UEtrees$hauteur_totale)`**
+
+
+**Données manquantes**
+
+NAs dans les colonnes clés du fichier *parc.csv*: **`r length(na_parc)`**
+
+NAs dans la colonne DHP: **`r sum(is.na(UEtrees$DBH))`**
+
+NAs dans la colonne bloc (n_bloc): **`r length(UEtrees[UEtrees$n_bloc==0,1])`**
+
+NAs dans les cordonnés des arbres: **`r length(UEtrees[which(is.na(UEtrees$X)),1])`** 
+
+
+**Valeurs suspect**
+
+Cordonnées des plantes dehors du bloc: **`r length(UEtrees[UEtrees$n_bloc==0,1])`**
+
+DHP/Hauter >0.6: **`r length(UEtrees[which(UEtrees$dhp/UEtrees$hauteur_totale<0.6),1])`**
+
+Arbr. Vivantes avec DHP/Hauter >10: **`r length(UEtrees[which(UEtrees$dhp/UEtrees$hauteur_totale>3 & UEtrees$type=="Arbr. Viv."),1])`**
+
+Arbr. Vivantes avec Hauter >40m: **`r length(UEtrees[which(UEtrees$hauteur_totale>40 & UEtrees$type=="Arbr. Viv."),1])`**
+
+Arbr. Vivantes avec Hauter >30m: **`r length(UEtrees[which(UEtrees$hauteur_totale>30 & UEtrees$type=="Arbr. Viv."),1])`**
+
+Arbr. Vivantes avec Hauter >200m: **`r length(UEtrees[which(UEtrees$hauteur_totale>20 & UEtrees$type=="Arbr. Viv."),1])`**
+
+N. de sos: **`r length(unique(UEtrees$n_sos))`**
+
+```{r Biomatric, echo=FALSE, results='asis',fig.align='center'}
+
+uno=as.data.frame(t(aggregate(data=UEtrees[!is.na(UEtrees$DBH),],cbind(DBH)~type,
+                              function(x) c( mean = mean(x,na.rm=TRUE) ,
+                                             minimum = min(x,na.rm=TRUE) ,
+                                             maximum = max(x,na.rm=TRUE) ,
+                                             s.size = sum(!is.na(x))))),stringsAsFactors = FALSE)
+
+colnames(uno)=uno[1,]
+uno=uno[-1,]
+rownames(uno)<-c("Mean","Min","Max","Sample size")
+```
+
+
+**Description des DHP**
+
+
+
+`r kable(uno, format = "markdown", booktabs = T, caption="Statistiques descriptives du DHP des individus inventoriés")`
+
+
+
+
+<!-- # ```{r tree_position_sos ,echo=FALSE,out.width='.49\\linewidth',fig.show='hold',fig.align='center',fig.pos="h",fig.height=3,fig.width=3.5,fig.cap="Position des arbres dans l'UE"} -->
+<!-- # ```{r tree_position_sos ,echo=FALSE,fig.show = "hold", out.width = "50%"} -->
+
+```{r tree_dhp_hauteur ,echo=FALSE,out.width='.49\\linewidth',fig.show='hold',fig.align='center',fig.pos="h",fig.height=7,fig.width=10,fig.cap="Graphique Diametre/Hauteur l'UE"}
+UEtreesCom<-UEtrees[UEtrees$type=="Arbr. Viv.",]
+
+ggplot(UEtreesCom, aes(x=DBH,y=hauteur_totale)) + 
+  geom_point( alpha=I(1/4)) +
+  geom_smooth(method="lm") +
+  geom_text(aes(label=ifelse(UEtreesCom$DBH/UEtreesCom$hauteur_totale > 4*IQR(UEtreesCom$DBH/UEtreesCom$hauteur_totale, na.rm=T),as.character(UEtreesCom$ID),"")), size=2.7)+
+  # geom_text_repel(data=UEtrees, aes(x=DBH, y=hauteur_totale,label=ID,size=2.7))+
+  labs(x = "dhp (cm)", y = "Hauter measurée (m)")
+
+
+```
