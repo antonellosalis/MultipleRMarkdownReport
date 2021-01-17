@@ -9,7 +9,6 @@
 # 2020
 #                      
 # Antonello Salis
-# antonello.salis@fao.org
 # antonellosalis@gmail.com
 # last version 20200528
 #
